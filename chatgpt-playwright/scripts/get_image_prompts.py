@@ -6,10 +6,20 @@ sub.jsonファイルからすべてのimage_promptを抽出し、
 プロジェクトディレクトリにprompts.jsonとして保存するスクリプト
 """
 
-import json
+from __future__ import annotations
+
 import argparse
+import json
+import os
 from pathlib import Path
 from typing import Any
+import logging
+
+import sys
+sys.path.append(str(Path(__file__).resolve().parents[2]))  # add repo root for 'pipeline' package
+from pipeline.logging_utils import setup_logging, get_logger
+
+log = get_logger(__name__)
 
 
 class ImagePromptExtractor:
@@ -19,17 +29,24 @@ class ImagePromptExtractor:
     SOLID原則に従い、単一責任原則でプロンプト抽出に特化
     """
     
-    def __init__(
-        self, 
-        base_path: str = "/Users/min9813/project/tiktok/voicevox"
-    ):
+    def __init__(self, base_path: str | None = None):
         """
         Image Prompt Extractorを初期化
         
         Args:
             base_path: プロジェクトのベースパス
         """
-        self.base_path = Path(base_path)
+        # Resolve base_path; prefer env BASE_PATH, then passed value, then repo root
+        env_base = os.getenv("BASE_PATH")
+        if env_base:
+            self.base_path = Path(env_base)
+        elif base_path is not None:
+            self.base_path = Path(base_path)
+        else:
+            # scripts/ -> chatgpt-playwright/ -> ScriptsToImageVoice/ -> voicevox/
+            candidate = Path(__file__).resolve().parents[3]
+            self.base_path = candidate
+        log.info("ImagePromptExtractor base", extra={"base_path": str(self.base_path)})
         self.t_sozai_path = self.base_path / "t_sozai" / "upload_movies"
         self.projects_path = (
             self.base_path / "chatgpt-playwright" / "projects"
@@ -135,7 +152,7 @@ class ImagePromptExtractor:
             directory_name: 処理するディレクトリ名
         """
         try:
-            print(f"🔍 Processing directory: {directory_name}")
+            log.info("Processing directory", extra={"dir": directory_name})
             
             # sub.jsonを読み込み
             sub_data = self.load_sub_json(directory_name)
@@ -150,14 +167,13 @@ class ImagePromptExtractor:
                 if prompt not in seen:
                     unique_prompts.append(prompt)
                     seen.add(prompt)
-            
-            print(f"📝 Extracted {len(unique_prompts)} unique prompts")
+            log.info("Extracted unique prompts", extra={"count": len(unique_prompts)})
             
             # prompts.jsonとして保存
             self.save_prompts_json(unique_prompts, directory_name)
             
         except Exception as e:
-            print(f"❌ Error processing {directory_name}: {e}")
+            log.error("Error processing directory", extra={"dir": directory_name, "error": str(e)})
             raise
     
     def list_available_directories(self) -> list[str]:
@@ -180,9 +196,7 @@ class ImagePromptExtractor:
 
 def main():
     """メイン実行関数"""
-    parser = argparse.ArgumentParser(
-        description="Extract image prompts from sub.json files"
-    )
+    parser = argparse.ArgumentParser(description="Extract image prompts from sub.json files")
     parser.add_argument(
         "directory",
         nargs="?",
@@ -198,28 +212,34 @@ def main():
         action="store_true",
         help="Process all available directories"
     )
+    parser.add_argument(
+        "--log_level",
+        type=str,
+        default=None,
+        help="ログレベル (e.g., INFO, DEBUG)"
+    )
     
     args = parser.parse_args()
+    setup_logging(args.log_level)
     
     extractor = ImagePromptExtractor()
     
     if args.list:
         # 利用可能なディレクトリを表示
         directories = extractor.list_available_directories()
-        print("📁 Available directories:")
+        log.info("Available directories", extra={"count": len(directories)})
         for directory in directories:
-            print(f"  - {directory}")
+            print(f"{directory}")
         return
     
     if args.all:
         # すべてのディレクトリを処理
         directories = extractor.list_available_directories()
-        print(f"🚀 Processing {len(directories)} directories...")
+        log.info("Processing all directories", extra={"count": len(directories)})
         
         for directory in directories:
             extractor.process_directory(directory)
-        
-        print("✨ All directories processed successfully!")
+        log.info("All directories processed successfully!")
         return
     
     if args.directory:
