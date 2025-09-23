@@ -245,9 +245,6 @@ def main():
     if args.directory:
         # 指定されたディレクトリを処理
         extractor.process_directory(args.directory)
-    else:
-        # デフォルトで20250921を処理
-        extractor.process_directory("20250921")
 
 
 if __name__ == "__main__":

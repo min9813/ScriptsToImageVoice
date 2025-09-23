@@ -182,7 +182,11 @@ def generate_combined_subtitles(base_dir: str, output_filename: str = "combined_
 
         if scene_segments:
             scene_duration = scene_segments[-1].end_time
-            current_time_offset += scene_duration + silence_duration
+            current_time_offset = scene_duration + silence_duration
+
+        print("="*30)
+        print(scene_segments)
+        print("="*30)
 
     if not all_segments:
         log.error("no subtitle segments produced")

@@ -86,12 +86,8 @@ def generate_scene_voices(
       - script.txt, voice_query.json, scene_sub.json, voice_audio.wav
     Optionally writes combined_all_scenes.wav at output_dir root.
     """
-    try:
-        with open(json_path, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-    except Exception as e:
-        log.error("load sub.json failed", extra={"path": json_path, "error": str(e)})
-        return False
+    with open(json_path, 'r', encoding='utf-8') as f:
+        data = json.load(f)
 
     log.info("start voice generation", extra={
         "json_path": json_path, "output_dir": output_dir, "speaker_id": speaker_id,
@@ -115,12 +111,8 @@ def generate_scene_voices(
             f.write(scene_text)
 
         # Build base audio query for whole scene
-        try:
-            audio_query = vv_create_query(text=scene_text, speaker_id=speaker_id, host=host, port=port,
-                                          pre_length=0.0, post_length=0.0)
-        except VoicevoxError as e:
-            log.error("audio_query failed", extra={"scene": scene_key, "error": str(e)})
-            continue
+        audio_query = vv_create_query(text=scene_text, speaker_id=speaker_id, host=host, port=port,
+                                        pre_length=0.0, post_length=0.0)
 
         audio_query["speedScale"] = speed_scale
 
@@ -130,11 +122,7 @@ def generate_scene_voices(
         # Enrich kana for title + per text chunk to construct scene_sub.json
         kana_all: List[str] = []
         for txt in text_all:
-            try:
-                q = vv_create_query(text=txt, speaker_id=speaker_id, host=host, port=port)
-            except VoicevoxError as e:
-                log.error("audio_query (kana) failed", extra={"scene": scene_key, "error": str(e)})
-                continue
+            q = vv_create_query(text=txt, speaker_id=speaker_id, host=host, port=port)
             kana_text = ""
             for acc in q.get("accent_phrases", []) or []:
                 for mora in acc.get("moras", []) or []:
@@ -152,11 +140,7 @@ def generate_scene_voices(
         with open(os.path.join(scene_out, "scene_sub.json"), 'w', encoding='utf-8') as f:
             json.dump(scene_data, f, ensure_ascii=False, indent=2)
 
-        try:
-            wav_bytes = synthesize_speech(audio_query=audio_query, speaker_id=speaker_id, host=host, port=port)
-        except VoicevoxError as e:
-            log.error("synthesis failed", extra={"scene": scene_key, "error": str(e)})
-            continue
+        wav_bytes = synthesize_speech(audio_query=audio_query, speaker_id=speaker_id, host=host, port=port)
         with open(os.path.join(scene_out, "voice_audio.wav"), 'wb') as f:
             f.write(wav_bytes)
         generated.append(os.path.join(scene_out, "voice_audio.wav"))
