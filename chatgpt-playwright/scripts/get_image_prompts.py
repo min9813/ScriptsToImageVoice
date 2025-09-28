@@ -48,8 +48,9 @@ class ImagePromptExtractor:
             self.base_path = candidate
         log.info("ImagePromptExtractor base", extra={"base_path": str(self.base_path)})
         self.t_sozai_path = self.base_path / "t_sozai" / "upload_movies"
+        playwright_dir = Path(__file__).resolve().parents[1]
         self.projects_path = (
-            self.base_path / "chatgpt-playwright" / "projects"
+            playwright_dir / "projects"
         )
     
     def extract_prompts_from_scene(

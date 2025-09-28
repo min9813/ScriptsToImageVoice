@@ -71,8 +71,8 @@ def analyze_voice_query_timing(query_file: str, segments: List[Dict]) -> List[Su
             ch = mora.get("text")
             if ch is None:
                 continue
-            consonant_length = (mora.get("consonant_length") or 0.0)
-            vowel_length = (mora.get("vowel_length") or 0.0)
+            consonant_length = (mora.get("consonant_length") or 0.0) / speed_scale
+            vowel_length = (mora.get("vowel_length") or 0.0) / speed_scale
             dur = consonant_length + vowel_length
             if ch in ["pau", "cl", "N", "U", "I"]:
                 cur_time += dur
@@ -85,9 +85,11 @@ def analyze_voice_query_timing(query_file: str, segments: List[Dict]) -> List[Su
             })
             cur_time += dur
             cur_pos += len(ch)
-        pause = phrase.get("pause_mora")
+        pause = phrase["pause_mora"]
         if pause:
-            cur_time += (pause.get("vowel_length") or 0.0)
+            pause_vowel = pause.get("vowel_length") or 0.0
+            pause_consonant = pause.get("consonant_length") or 0.0
+            cur_time += (pause_vowel + pause_consonant) / 1.1
 
     result: List[SubtitleSegment] = []
     for i, sp in enumerate(seg_positions):
@@ -112,8 +114,8 @@ def analyze_voice_query_timing(query_file: str, segments: List[Dict]) -> List[Su
                 assert ct["char"] == sp["end_chars"][-ch_len:]
                 break
 
-        adj_start = start_time / speed_scale
-        adj_end = end_time / speed_scale
+        adj_start = start_time
+        adj_end = end_time
 
         text_val = seg["text"]
         if text_val.endswith(".") and not text_val.endswith(".."):
@@ -129,6 +131,11 @@ def analyze_voice_query_timing(query_file: str, segments: List[Dict]) -> List[Su
             kana_text=seg["kana_text"],
             segment_type=seg.get("type", "text"),
         ))
+
+    print("="*30)
+    print(result)
+    print("="*30)
+
 
     return result
 
@@ -154,7 +161,7 @@ def generate_combined_subtitles(base_dir: str, output_filename: str = "combined_
         scene_files.append((scene_key, query_file, scene_sub_data))
 
     if not scene_files:
-        log.error("no scenes found for subtitles", extra={"base_dir": base_dir})
+        log.error(f"no scenes found for subtitles in {base_dir}", extra={"scene_files": scene_files})
         return False, ""
 
     all_segments: List[SubtitleSegment] = []

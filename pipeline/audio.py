@@ -115,6 +115,8 @@ def generate_scene_voices(
                                         pre_length=0.0, post_length=0.0)
 
         audio_query["speedScale"] = speed_scale
+        audio_query["prePhonemeLength"] = 0.0
+        audio_query["postPhonemeLength"] = 0.0
 
         with open(os.path.join(scene_out, "voice_query.json"), 'w', encoding='utf-8') as f:
             json.dump(audio_query, f, ensure_ascii=False, indent=2)

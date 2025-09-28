@@ -23,10 +23,12 @@ import fs from 'fs/promises';
 import path from 'path';
 
 const generatePrompt = (image_prompt: string) => {
-    return '詳細なアニメの美意識の画像を作成してください。表情豊かな瞳、なめらかな網掛けセルの色使い、はっきりした線画を使用します。' +
+    return '画像を作成してください。画像を作成してください。画像を作成してください。詳細なアニメの美意識の画像を作成してください。表情豊かな瞳、なめらかな色使い、はっきりした線画を使用します。' +
     'アニメのシーンに典型的な身ぶりと雰囲気で、心情と登場人物の存在を強調してください。' +
     image_prompt +
-    ' 顔は全体の上1/3に配置してください'+
+    ' 全員顔は全体の上1/3に配置してください '+ "顔のサイズは小さめにしてください" +
+    ".2人いる場合は全員を大体同じ高さの頭の位置にしてください。"+
+    "真ん中に字幕を挿入しても顔が被らないようにしてください" +
     ' W:H=9:16, W:H=9:16, W:H=9:16, W:H=9:16';
 }
 
@@ -34,11 +36,6 @@ const generatePrompt = (image_prompt: string) => {
 const defaultPrompts = [
   generatePrompt('アニメ風の男子生徒が、少し離れた場所にいる女子生徒を、照れながらでも少し俯き加減の表情でこっそり見ている教室のシーン'),
   generatePrompt('カフェで向かい合って座るアニメ風の男女。女性は微笑んでいるが、男性は何か言いたげに口ごもっている.男性は女性に対して少し照れている'),
-  generatePrompt('好きな人が告白してこないことに悩む表情のアニメ風の女性のクローズアップ'),
-  generatePrompt('アニメ風の男子生徒が、少し照れながらも真剣な表情で何かを考えている'),
-  generatePrompt('男子生徒が、友人たちにからかわれて頭を抱えている、コミカルで恥ずかしそうなシーン'),
-  generatePrompt('文化祭準備に打ち込んでいる男子'),
-  generatePrompt('タイミングを逃して絶望した表情で呆然としている男子'),
 ];
 
 const CHAT_URL = 'https://chatgpt.com/';
@@ -62,11 +59,19 @@ function resolveProjectName(): string {
 }
 
 // ==== 便利関数: JSON 安全読み書き ====
-async function readJson<T>(p: string, fallback: T): Promise<T> {
+async function readJson<T>(p: string): Promise<T> {
   try {
     const s = await fs.readFile(p, 'utf-8');
     return JSON.parse(s) as T;
-  } catch { return fallback; }
+  } catch (error) {
+    // ファイルが存在しない場合は空のJSONオブジェクトを作成して返す
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      const emptyJson = {} as T;
+      await writeJson(p, emptyJson);
+      return emptyJson;
+    }
+    throw error;
+  }
 }
 async function writeJson(p: string, data: unknown) {
   await fs.mkdir(path.dirname(p), { recursive: true });
@@ -103,7 +108,7 @@ async function loadPrompts(project: string): Promise<string[]> {
   }
   // 2) projects/<project>/prompts.json（JSON配列）
   const projFile = path.join('projects', project, 'prompts.json');
-  const arr = await readJson<string[]>(projFile, []);
+  const arr = await readJson<string[]>(projFile);
   
   if (arr.length > 0) {
     // 各要素にgeneratePrompt関数を適用
@@ -116,13 +121,29 @@ async function loadPrompts(project: string): Promise<string[]> {
 
 async function loadStatus(project: string): Promise<RunStatus> {
   const statusPath = path.join('runs', project, 'status.json');
-  return readJson<RunStatus>(statusPath, { project, updated_at: nowIso(), items: [] });
+  try {
+    const s = await fs.readFile(statusPath, 'utf-8');
+    return JSON.parse(s) as RunStatus;
+  } catch (error) {
+    // ファイルが存在しない場合は適切なデフォルト値を返す
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      const defaultStatus: RunStatus = {
+        project,
+        updated_at: nowIso(),
+        items: []
+      };
+      await writeJson(statusPath, defaultStatus);
+      return defaultStatus;
+    }
+    throw error;
+  }
 }
 
 async function appendStatus(project: string, entry: RunItem) {
   const statusPath = path.join('runs', project, 'status.json');
   const st = await loadStatus(project);
   // 既存の同一プロンプトの最新 status を上書き（attempt_count 更新を許容）
+  if (st.items === undefined) st.items = [];
   const idx = st.items.findIndex(it => it.prompt === entry.prompt);
   if (idx >= 0) {
     st.items[idx] = entry;
@@ -135,7 +156,23 @@ async function appendStatus(project: string, entry: RunItem) {
 
 async function appendSentPrompt(project: string, prompt: string) {
   const sentPath = path.join('runs', project, 'send_prompts.json');
-  const sentPrompts = await readJson<string[]>(sentPath, []);
+  
+  let sentPrompts: string[];
+  try {
+    const s = await fs.readFile(sentPath, 'utf-8');
+    const parsed = JSON.parse(s);
+    // 配列かどうかチェック
+    sentPrompts = Array.isArray(parsed) ? parsed : [];
+  } catch (error) {
+    // ファイルが存在しない場合は空の配列から開始
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      sentPrompts = [];
+    } else {
+      throw error;
+    }
+  }
+  
+  console.log('sentPrompts', sentPrompts, 'sentPrompts.length', sentPrompts.length);
   
   // 重複チェック（文字列比較）
   if (!sentPrompts.includes(prompt)) {
@@ -146,18 +183,29 @@ async function appendSentPrompt(project: string, prompt: string) {
 
 async function loadSentPrompts(project: string): Promise<string[]> {
   const sentPath = path.join('runs', project, 'send_prompts.json');
-  return readJson<string[]>(sentPath, []);
+  try {
+    const s = await fs.readFile(sentPath, 'utf-8');
+    const parsed = JSON.parse(s);
+    // 配列かどうかチェック
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (error) {
+    // ファイルが存在しない場合は空の配列を返す
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      return [];
+    }
+    throw error;
+  }
 }
 
 async function buildSkipSet(project: string, status: RunStatus): Promise<Set<string>> {
-  // 成功済みプロンプトをスキップ
-  const successPrompts = status.items.filter(it => it.status === 'success').map(it => it.prompt);
-  
   // 送信済みプロンプトもスキップ（文字列比較）
   const sentPrompts = await loadSentPrompts(project);
+  console.log('sentPrompts', sentPrompts, 'sentPrompts.length', sentPrompts.length);
+  if (sentPrompts.length === 0 || sentPrompts.length === undefined) return new Set();
   
   // 両方を合わせてスキップセットを作成
-  const allSkipPrompts = [...new Set([...successPrompts, ...sentPrompts])];
+  const allSkipPrompts = [...new Set([...sentPrompts])];
+  console.log('allSkipPrompts', allSkipPrompts);
   return new Set(allSkipPrompts);
 }
 
@@ -436,6 +484,7 @@ let crashed = false;
     const startIso = nowIso();
     // 既存attemptがあれば拾って+1（任意：簡易版は常に1でOK）
   const existing = await loadStatus(project);
+  if (existing.items === undefined) existing.items = [];
   const prev = existing.items.find(it => it.prompt === prompt);
     if (prev) attempts = prev.attempt_count + 1;
     try {
@@ -500,6 +549,7 @@ async function main() {
 
   const status = await loadStatus(project);
   const skipSet = await buildSkipSet(project, status);
+  console.log("skipSet", skipSet)
 
   console.log(`Project: ${project}`);
   console.log(`Total prompts: ${prompts.length}, skip(success): ${skipSet.size}`);
